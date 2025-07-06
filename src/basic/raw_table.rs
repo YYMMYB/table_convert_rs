@@ -9,17 +9,29 @@ use std::{
 use error::*;
 use ndarray::{Array2, ArrayView2, s};
 
-use crate::basic::database::Table;
+use crate::basic::{
+  database::{self, Database, Table},
+  parser::Parser,
+};
 
 pub type Cell = Rc<String>;
+
+// ╔══════╦══════╗
+// ║      ║ head ║
+// ║ meta ╠══════╣
+// ║      ║ data ║
+// ╚══════╩══════╝
+//          main = head + data
+
 pub struct RawTable {
-  name: String,
+  full_name: String,
   storage: Array2<Cell>,
-  data: usize,
+  main_col: usize,
+  data_row: usize,
 }
 
 impl RawTable {
-  pub fn from_csv(path: impl AsRef<Path>) -> Result<Self> {
+  pub fn from_csv(path: impl AsRef<Path>, full_name: String) -> Result<Self> {
     let mut rdr = ReaderBuilder::new()
       .has_headers(false)
       .from_path(path.as_ref())?;
@@ -43,20 +55,33 @@ impl RawTable {
       Array2::from_shape_fn([column, row], |(i, j)| cells[j * column + i].clone())
     };
     Ok(Self {
-      name: path
-        .as_ref()
-        .file_stem()
-        .ok_or(Error::FileStemError)?
-        .to_str()
-        .ok_or(Error::OsStrError)?
-        .to_owned(),
+      full_name,
       storage,
-      data: 2,
+      main_col: 1,
+      data_row: 2,
     })
   }
 
-  pub fn build_table(&self) -> Table {
-    todo!()
+  pub fn get_data_area(&self) -> ArrayView2<Cell> {
+    self.storage.slice(s![self.data_row.., self.main_col..])
+  }
+  pub fn get_head_area(&self) -> ArrayView2<Cell> {
+    self.storage.slice(s![..self.data_row, self.main_col..])
+  }
+
+  pub fn get_full_name(&self) -> String {
+    self.full_name.clone()
+  }
+
+  pub fn build_table(&self, database: &mut Database) -> Result<Table> {
+    let mut parser = Parser::new();
+    let typ = parser.parse_head(self, database)?;
+    let value = parser.parse_data(self, database)?;
+    Ok(Table {
+      full_name: self.full_name.clone(),
+      typ,
+      value,
+    })
   }
 }
 

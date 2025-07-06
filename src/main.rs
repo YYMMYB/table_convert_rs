@@ -8,6 +8,7 @@ fn main() {
     .init();
 
   info!("aaaaa");
-  use anyhow::Result;
-  use serde_json::{Map, Number, Value};
+  
+  let a = "".split('.').collect::<Vec<_>>();
+  println!("{:?}",a);
 }
