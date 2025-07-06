@@ -1,0 +1,21 @@
+[package]
+name = "rust_table_export_simple"
+version = "0.1.0"
+edition = "2024"
+description = "不支持嵌套. 嵌套太复杂, 先写这个先用着吧"
+
+[dependencies]
+log = "*"
+env_logger = "*"
+clap = "*"
+ndarray = "*"
+csv = "*"
+anyhow = "*"
+thiserror = "*"
+
+serde = "*"
+serde_json = "*"
+
+ego-tree = "*"
+
+strum = {version = "*", features = ["derive"]}
