@@ -86,21 +86,25 @@ pub enum Data {
   Map(HashMap<Rc<String>, NodeId>),
 }
 
+#[derive(Debug)]
 pub struct Table {
   pub full_name: String,
   pub typ: usize,
   pub value: Tree<Data>,
 }
 
+#[derive(Debug)]
 pub struct Module {
+  pub name: String,
   pub type_name_to_id: HashMap<String, usize>,
   pub table_name_to_id: HashMap<String, usize>,
   pub children_name_to_id: HashMap<String, NodeId>,
 }
 
 impl Module {
-  pub fn new() -> Self {
+  pub fn new(name:&str) -> Self {
     Self {
+      name: name.to_string(),
       type_name_to_id: HashMap::new(),
       table_name_to_id: HashMap::new(),
       children_name_to_id: HashMap::new(),
@@ -108,6 +112,7 @@ impl Module {
   }
 }
 
+#[derive(Debug)]
 pub struct Database {
   pub types: Vec<Type>,
   pub tables: Vec<Table>,
@@ -115,6 +120,18 @@ pub struct Database {
 }
 
 impl Database {
+  pub fn new() -> Self {
+    let mut res = Self {
+      types: Vec::new(),
+      tables: Vec::new(),
+      modules: Tree::new(Module::new("")),
+    };
+    res.add_type(Type::Int);
+    res.add_type(Type::Float);
+    res.add_type(Type::String);
+    res.add_type(Type::Bool);
+    res
+  }
   pub fn get_or_create_module(&mut self, module: &str) -> NodeId {
     let mods = config::path_components(module);
     assert!(mods[0] == "");
@@ -131,7 +148,7 @@ impl Database {
         mid = id;
       } else {
         let mut node = self.modules.get_mut(mid).unwrap();
-        let id = node.append(Module::new()).id();
+        let id = node.append(Module::new(mod_name)).id();
         node
           .value()
           .children_name_to_id
@@ -171,7 +188,7 @@ impl Database {
       .unwrap()
       .value()
       .type_name_to_id
-      .insert(ty.get_full_name(), id);
+      .insert(config::path_name(&ty.get_full_name()).to_string(), id);
     self.types.push(ty);
     id
   }

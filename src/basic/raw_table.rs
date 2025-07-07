@@ -31,7 +31,7 @@ pub struct RawTable {
 }
 
 impl RawTable {
-  pub fn from_csv(path: impl AsRef<Path>, full_name: String) -> Result<Self> {
+  pub fn from_csv(path: impl AsRef<Path>, full_name: &str) -> Result<Self> {
     let mut rdr = ReaderBuilder::new()
       .has_headers(false)
       .from_path(path.as_ref())?;
@@ -55,7 +55,7 @@ impl RawTable {
       Array2::from_shape_fn([column, row], |(i, j)| cells[j * column + i].clone())
     };
     Ok(Self {
-      full_name,
+      full_name: full_name.to_string(),
       storage,
       main_col: 1,
       data_row: 2,
@@ -96,5 +96,30 @@ pub mod error {
     FileStemError,
     #[error("文件名含有非Unicode字符")]
     OsStrError,
+  }
+}
+
+mod test {
+  use crate::basic::{database::Database, raw_table::RawTable};
+  use anyhow::Result;
+
+  #[test]
+  pub fn test_csv_load() -> Result<()> {
+    let mut raw_table = RawTable::from_csv("./test/a.csv", ".测试表")?;
+    let mut raw_table_t = RawTable::from_csv("./test/a_t.csv", ".测试表")?;
+    assert_eq!(raw_table.get_head_area(), raw_table_t.get_head_area());
+    assert_eq!(raw_table.get_data_area(), raw_table_t.get_data_area());
+    dbg!(raw_table.get_head_area());
+    dbg!(raw_table.get_data_area());
+    Ok(())
+  }
+  #[test]
+  pub fn test_raw_table_build() -> Result<()>{
+    let mut raw_table = RawTable::from_csv("./test/a.csv", ".测试表")?;
+    let mut database = Database::new();
+    let table = raw_table.build_table(&mut database)?;
+    dbg!(&table);
+    dbg!(&database);
+    Ok(())
   }
 }
