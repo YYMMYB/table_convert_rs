@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use log::*;
 
@@ -9,6 +9,7 @@ fn main() {
 
   info!("aaaaa");
   
-  let a = "".split('.').collect::<Vec<_>>();
-  println!("{:?}",a);
+  let path = Path::new("D:\\a\\b\\c");
+  let rel = path.strip_prefix("D:/a").unwrap();
+  println!("{}", rel.to_str().unwrap())
 }

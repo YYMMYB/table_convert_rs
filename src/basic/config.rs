@@ -1,10 +1,11 @@
+use crate::HashMap;
+use anyhow::Result;
 use std::{
   cell::{LazyCell, OnceCell},
   hash::Hash,
+  path::Path,
   sync::LazyLock,
 };
-
-use crate::HashMap;
 
 pub const PATH_SPLITOR: char = '.';
 
@@ -68,3 +69,12 @@ pub static BUILTIN_TYPE_NAMES: LazyLock<HashMap<&'static str, &'static str>> =
 pub const TYPE_PARAMETER_DELIMINATOR_LEFT: &str = "<";
 pub const TYPE_PARAMETER_DELIMINATOR_RIGHT: &str = ">";
 pub const TYPE_PARAMETER_SPLITOR: &str = ",";
+
+pub fn os_path_to_path(
+  root_os_path: impl AsRef<Path>,
+  os_path: impl AsRef<Path>,
+) -> Option<String> {
+  Some(path_rel_to_global(
+    &os_path.as_ref().strip_prefix(root_os_path).ok()?.to_str()?,
+  ))
+}

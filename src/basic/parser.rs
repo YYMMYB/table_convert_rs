@@ -8,7 +8,7 @@ use crate::{
   HashMap,
   basic::{
     config,
-    database::{self, RawData, Database, ItemTag, Type},
+    database::{self, Database, ItemTag, RawData, Type},
     raw_table::{Cell, RawTable},
   },
 };
@@ -23,7 +23,9 @@ pub struct Parser {
 
 impl Parser {
   pub fn new() -> Self {
-    Self { columns: Vec::new() }
+    Self {
+      columns: Vec::new(),
+    }
   }
   pub fn parse_head(&mut self, raw_table: &RawTable, database: &mut Database) -> Result<usize> {
     let mut fields = HashMap::new();
@@ -63,7 +65,12 @@ impl Parser {
     let mut data_tree = Tree::new(RawData::Many);
     for row in 0..data_area.shape()[0] {
       let mut root_mut = data_tree.root_mut();
-      let item_id = root_mut.append(RawData::Map(HashMap::new())).id();
+      let mut entry_id = root_mut.append(RawData::Many).id();
+      let item_id = data_tree
+        .get_mut(entry_id)
+        .unwrap()
+        .append(RawData::Struct(HashMap::new()))
+        .id();
       for col in 0..data_area.shape()[1] {
         let cell = data_area.get([row, col]).unwrap();
         let field = &self.columns[col].field;
@@ -71,7 +78,7 @@ impl Parser {
           .get(item_id)
           .unwrap()
           .value()
-          .try_as_map_ref()
+          .try_as_struct_ref()
           .unwrap()
           .get(field)
         {
@@ -101,11 +108,23 @@ impl Parser {
             .get_mut(item_id)
             .unwrap()
             .value()
-            .try_as_map_mut()
+            .try_as_struct_mut()
             .unwrap()
             .insert(field.clone(), id);
         }
       }
+
+      let key_field_id = data_tree
+        .get(item_id)
+        .unwrap()
+        .value()
+        .try_as_struct_ref()
+        .unwrap()
+        .get(&self.columns[0].field)
+        .unwrap();
+      let key = data_tree.get(*key_field_id).unwrap().value().clone();
+
+      data_tree.get_mut(entry_id).unwrap().prepend(key);
     }
     Ok(data_tree)
   }

@@ -1,14 +1,24 @@
-use std::rc::Rc;
+use std::{
+  fs::{DirBuilder, File, ReadDir, create_dir, read_dir, write},
+  path::Path,
+  rc::Rc,
+};
 
 use ego_tree::{NodeId, Tree};
-use serde_json::Value;
+use serde::de::value;
+use serde_json::{Map, Number, Value};
 use strum::{EnumIs, EnumTryAs};
 
 use crate::{
   HashMap,
-  basic::{config, database, raw_table::Cell},
+  basic::{
+    config, database,
+    raw_table::{Cell, RawTable},
+  },
 };
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
+use error::Error::*;
+use std::io::Write;
 
 #[derive(Debug, Clone, EnumIs, EnumTryAs)]
 pub enum ItemTag {
@@ -78,12 +88,12 @@ impl Type {
   }
 }
 
-#[derive(Debug, EnumIs, EnumTryAs)]
+#[derive(Debug, Clone, EnumIs, EnumTryAs)]
 pub enum RawData {
   Unknown,
   One(Cell),
   Many,
-  Map(HashMap<Rc<String>, NodeId>),
+  Struct(HashMap<Rc<String>, NodeId>),
 }
 
 #[derive(Debug)]
@@ -93,20 +103,122 @@ pub struct Data {
   pub value: Tree<RawData>,
 }
 
+impl Data {
+  pub fn build_json(&self, database: &Database) -> Result<Value> {
+    self.bd_json(database, self.typ, self.value.root().id())
+  }
+
+  fn bd_json(&self, database: &Database, typ_id: usize, data_id: NodeId) -> Result<Value> {
+    let ty = database.get_type(typ_id).ok_or(类型不存在)?;
+    let node = self.value.get(data_id).ok_or(原始数据节点不存在)?;
+
+    let value = match ty {
+      Type::Unknown => return Err(类型未知.into()),
+      Type::Placeholder(_) => return Err(类型没有定义.into()),
+      Type::Dynamic => unimplemented!("目前不支持动态类型"),
+      Type::Int => {
+        let s = node
+          .value()
+          .try_as_one_ref()
+          .ok_or(原始数据节点类型不匹配)?;
+        let v = serde_json::from_str::<Number>(&s)?;
+        if v.is_f64() {
+          return Err(数字类型错误.into());
+        }
+        Value::from(v)
+      }
+      Type::Float => {
+        let s = node
+          .value()
+          .try_as_one_ref()
+          .ok_or(原始数据节点类型不匹配)?;
+        let v = serde_json::from_str::<Number>(&s)?;
+        if !v.is_f64() {
+          return Err(数字类型错误.into());
+        }
+        Value::from(v)
+      }
+      Type::String => {
+        let s = node
+          .value()
+          .try_as_one_ref()
+          .ok_or(原始数据节点类型不匹配)?;
+        let v = &***s;
+        Value::from(v)
+      }
+      Type::Bool => {
+        let s = node
+          .value()
+          .try_as_one_ref()
+          .ok_or(原始数据节点类型不匹配)?;
+        let v = serde_json::from_str::<bool>(&s)?;
+        Value::from(v)
+      }
+      Type::List(tid) => {
+        if !node.value().is_many() {
+          return Err(原始数据节点类型不匹配.into());
+        }
+        let mut v = Vec::new();
+        for ch in node.children() {
+          let item = self.bd_json(database, *tid, ch.id())?;
+          v.push(item);
+        }
+        Value::from(v)
+      }
+      Type::Dict(key_tid, value_tid) => {
+        if !node.value().is_many() {
+          return Err(原始数据节点类型不匹配.into());
+        }
+        let mut v = Map::new();
+        for ch in node.children() {
+          let mut entry = ch.children();
+          let key_id = entry.next().ok_or(原始数据节点类型不匹配)?.id();
+          let value_id = entry.next().ok_or(原始数据节点类型不匹配)?.id();
+          if entry.next().is_some() {
+            return Err(原始数据节点类型不匹配.into());
+          }
+          let key = self.bd_json(database, *key_tid, key_id)?;
+          let value = self.bd_json(database, *value_tid, value_id)?;
+          let key_str = serde_json::to_string(&key)?;
+          v.insert(key_str, value);
+        }
+        Value::from(v)
+      }
+      Type::Struct { full_name, fields } => {
+        let fields_data = node
+          .value()
+          .try_as_struct_ref()
+          .ok_or(原始数据节点类型不匹配)?;
+        if fields.len() != fields_data.len() {
+          return Err(原始数据节点类型不匹配.into());
+        }
+        let mut v = Map::new();
+        for (field_name, f_tid) in fields.iter() {
+          let f_id = fields_data.get(field_name).ok_or(原始数据节点类型不匹配)?;
+          let field = self.bd_json(database, *f_tid, *f_id)?;
+          v.insert(field_name.as_ref().clone(), field);
+        }
+        Value::from(v)
+      }
+    };
+    Ok(value)
+  }
+}
+
 #[derive(Debug)]
 pub struct Module {
   pub name: String,
   pub type_name_to_id: HashMap<String, usize>,
-  pub data_name_to_id: HashMap<String, usize>,
+  pub data: Option<usize>,
   pub children_name_to_id: HashMap<String, NodeId>,
 }
 
 impl Module {
-  pub fn new(name:&str) -> Self {
+  pub fn new(name: &str) -> Self {
     Self {
       name: name.to_string(),
+      data: None,
       type_name_to_id: HashMap::new(),
-      data_name_to_id: HashMap::new(),
       children_name_to_id: HashMap::new(),
     }
   }
@@ -192,10 +304,17 @@ impl Database {
     self.types.push(ty);
     id
   }
-  pub fn add_data(&mut self, data: Data) -> usize { 
-    todo!()
+  pub fn add_data(&mut self, data: Data) -> usize {
+    let mid = self.get_or_create_module(&data.full_name);
+    assert!(mid != self.modules.root().id());
+    let mut m = self.modules.get_mut(mid).unwrap();
+    let data_loc = &mut m.value().data;
+    assert!(data_loc.is_none());
+    let id = self.data.len();
+    *data_loc = Some(id);
+    self.data.push(data);
+    id
   }
-
 
   pub fn get_type_id_by_full_name(&self, name: &str) -> Option<usize> {
     let mid = self.get_module(config::path_parent(name))?;
@@ -206,5 +325,69 @@ impl Database {
       .type_name_to_id
       .get(config::path_name(name))
       .copied()
+  }
+
+  pub fn load_project(&mut self, root: impl AsRef<Path>) -> Result<()> {
+    self.ld_project(&root, &root)
+  }
+
+  fn ld_project(&mut self, root: impl AsRef<Path>, path: impl AsRef<Path>) -> Result<()> {
+    for entry in read_dir(path.as_ref())? {
+      let entry = entry?;
+      if entry.path().is_file() {
+        let mut raw_table = RawTable::from_csv(
+          entry.path(),
+          &config::os_path_to_path(&root, entry.path()).ok_or(文件路径错误)?,
+        )?;
+        raw_table.build(self)?;
+      }else{
+        self.ld_project(&root, entry.path())?
+      }
+    }
+    Ok(())
+  }
+
+  pub fn generate_data(&self, target: impl AsRef<Path>) -> Result<()> {
+    self.gen_data(target, self.modules.root().id())
+  }
+
+  fn gen_data(&self, target: impl AsRef<Path>, mid: NodeId) -> Result<()> {
+    for ch in self.modules.get(mid).unwrap().children() {
+      let path = target.as_ref().join(&ch.value().name);
+      if let Some(did) = ch.value().data {
+        let data = self.get_data(did).ok_or(数据不存在)?;
+        let json = data.build_json(self)?;
+        let json_str = serde_json::to_string(&json)?;
+        write(path.with_extension("json"), json_str)?;
+      } else {
+        create_dir(&path)?;
+        self.gen_data(&path, ch.id())?;
+      }
+    }
+    Ok(())
+  }
+}
+
+pub mod error {
+  use thiserror::Error;
+
+  #[derive(Debug, Error)]
+  pub enum Error {
+    #[error("类型不存在")]
+    类型不存在,
+    #[error("类型未知")]
+    类型未知,
+    #[error("类型没有定义")]
+    类型没有定义,
+    #[error("原始数据节点不存在")]
+    原始数据节点不存在,
+    #[error("原始数据节点类型不匹配")]
+    原始数据节点类型不匹配,
+    #[error("数字类型错误")]
+    数字类型错误,
+    #[error("数据不存在")]
+    数据不存在,
+    #[error("文件路径错误")]
+    文件路径错误,
   }
 }
