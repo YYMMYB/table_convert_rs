@@ -79,7 +79,7 @@ impl Type {
 }
 
 #[derive(Debug, EnumIs, EnumTryAs)]
-pub enum Data {
+pub enum RawData {
   Unknown,
   One(Cell),
   Many,
@@ -87,17 +87,17 @@ pub enum Data {
 }
 
 #[derive(Debug)]
-pub struct Table {
+pub struct Data {
   pub full_name: String,
   pub typ: usize,
-  pub value: Tree<Data>,
+  pub value: Tree<RawData>,
 }
 
 #[derive(Debug)]
 pub struct Module {
   pub name: String,
   pub type_name_to_id: HashMap<String, usize>,
-  pub table_name_to_id: HashMap<String, usize>,
+  pub data_name_to_id: HashMap<String, usize>,
   pub children_name_to_id: HashMap<String, NodeId>,
 }
 
@@ -106,7 +106,7 @@ impl Module {
     Self {
       name: name.to_string(),
       type_name_to_id: HashMap::new(),
-      table_name_to_id: HashMap::new(),
+      data_name_to_id: HashMap::new(),
       children_name_to_id: HashMap::new(),
     }
   }
@@ -115,7 +115,7 @@ impl Module {
 #[derive(Debug)]
 pub struct Database {
   pub types: Vec<Type>,
-  pub tables: Vec<Table>,
+  pub data: Vec<Data>,
   pub modules: Tree<Module>,
 }
 
@@ -123,7 +123,7 @@ impl Database {
   pub fn new() -> Self {
     let mut res = Self {
       types: Vec::new(),
-      tables: Vec::new(),
+      data: Vec::new(),
       modules: Tree::new(Module::new("")),
     };
     res.add_type(Type::Int);
@@ -161,8 +161,8 @@ impl Database {
   pub fn get_type(&self, id: usize) -> Option<&Type> {
     self.types.get(id)
   }
-  pub fn get_table(&self, id: usize) -> Option<&Table> {
-    self.tables.get(id)
+  pub fn get_data(&self, id: usize) -> Option<&Data> {
+    self.data.get(id)
   }
   pub fn get_module(&self, module: &str) -> Option<NodeId> {
     let mods = config::path_components(module);
@@ -192,6 +192,10 @@ impl Database {
     self.types.push(ty);
     id
   }
+  pub fn add_data(&mut self, data: Data) -> usize { 
+    todo!()
+  }
+
 
   pub fn get_type_id_by_full_name(&self, name: &str) -> Option<usize> {
     let mid = self.get_module(config::path_parent(name))?;

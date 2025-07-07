@@ -8,7 +8,7 @@ use crate::{
   HashMap,
   basic::{
     config,
-    database::{self, Data, Database, ItemTag, Type},
+    database::{self, RawData, Database, ItemTag, Type},
     raw_table::{Cell, RawTable},
   },
 };
@@ -58,12 +58,12 @@ impl Parser {
     let did = database.add_type(Type::Dict(self.columns[0].typ, iid));
     Ok(did)
   }
-  pub fn parse_data(&self, raw_table: &RawTable, database: &Database) -> Result<Tree<Data>> {
+  pub fn parse_data(&self, raw_table: &RawTable, database: &Database) -> Result<Tree<RawData>> {
     let data_area = raw_table.get_data_area();
-    let mut data_tree = Tree::new(Data::Many);
+    let mut data_tree = Tree::new(RawData::Many);
     for row in 0..data_area.shape()[0] {
       let mut root_mut = data_tree.root_mut();
-      let item_id = root_mut.append(Data::Map(HashMap::new())).id();
+      let item_id = root_mut.append(RawData::Map(HashMap::new())).id();
       for col in 0..data_area.shape()[1] {
         let cell = data_area.get([row, col]).unwrap();
         let field = &self.columns[col].field;
@@ -78,7 +78,7 @@ impl Parser {
           data_tree
             .get_mut(*id)
             .ok_or(error::Error::Map存储了无效子节点)?
-            .append(Data::One(cell.clone()));
+            .append(RawData::One(cell.clone()));
         } else {
           let typ = database
             .get_type(self.columns[col].typ)
@@ -87,14 +87,14 @@ impl Parser {
           let id;
           if typ.is_list() {
             let mut item = data_tree.get_mut(item_id).unwrap();
-            let mut arr = item.append(Data::Many);
+            let mut arr = item.append(RawData::Many);
             id = arr.id();
-            arr.append(Data::One(cell.clone())).id();
+            arr.append(RawData::One(cell.clone())).id();
           } else {
             id = data_tree
               .get_mut(item_id)
               .unwrap()
-              .append(Data::One(cell.clone()))
+              .append(RawData::One(cell.clone()))
               .id();
           }
           data_tree

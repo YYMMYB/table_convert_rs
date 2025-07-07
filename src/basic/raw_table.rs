@@ -10,7 +10,7 @@ use error::*;
 use ndarray::{Array2, ArrayView2, s};
 
 use crate::basic::{
-  database::{self, Database, Table},
+  database::{self, Database, Data},
   parser::Parser,
 };
 
@@ -73,11 +73,11 @@ impl RawTable {
     self.full_name.clone()
   }
 
-  pub fn build_table(&self, database: &mut Database) -> Result<Table> {
+  pub fn build_data(&self, database: &mut Database) -> Result<Data> {
     let mut parser = Parser::new();
     let typ = parser.parse_head(self, database)?;
     let value = parser.parse_data(self, database)?;
-    Ok(Table {
+    Ok(Data {
       full_name: self.full_name.clone(),
       typ,
       value,
@@ -117,7 +117,7 @@ mod test {
   pub fn test_raw_table_build() -> Result<()>{
     let mut raw_table = RawTable::from_csv("./test/a.csv", ".测试表")?;
     let mut database = Database::new();
-    let table = raw_table.build_table(&mut database)?;
+    let table = raw_table.build_data(&mut database)?;
     dbg!(&table);
     dbg!(&database);
     Ok(())
