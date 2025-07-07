@@ -1,0 +1,14 @@
+{{#each mod_usings}}
+using {{this}};
+{{/each}}
+
+namespace {{#if project_namespace}}{{project_namespace}}.{{/if}}{{mod_namespace}};
+public class {{mod_name}} {
+    {{#each data}}
+    public {{type}} {{name}};
+    {{/each}}
+
+    {{#each mods}}
+    public {{name}}.{{../mod_name}} {{name}};
+    {{/each}}
+}

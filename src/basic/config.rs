@@ -43,7 +43,7 @@ pub fn generic_type_name(base: &str, type_params: &[usize]) -> String {
   v.join(&GENERIC_SPLITOR.to_string())
 }
 
-pub const ITEM_POSTFIX: &str = "Item";
+pub const ITEM_POSTFIX: &str = "_item";
 pub fn table_item_type_full_name(table_full_name: &str) -> String {
   let mod_name = path_components(&table_full_name)
     .last()

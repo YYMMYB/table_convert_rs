@@ -15,4 +15,7 @@ fn main() {
 
   fn p(path: impl AsRef<Path>) {}
   p("./test/");
+
+  let s = "{}";
+  
 }

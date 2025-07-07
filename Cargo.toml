@@ -15,7 +15,9 @@ thiserror = "*"
 
 serde = "*"
 serde_json = "*"
+handlebars = "*"
 
 ego-tree = "*"
+
 
 strum = {version = "*", features = ["derive"]}

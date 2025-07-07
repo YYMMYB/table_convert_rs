@@ -14,6 +14,7 @@ use strum::{EnumIs, EnumTryAs};
 use crate::{
   HashMap,
   basic::{
+    code_generator::csharp::CSharp,
     config, database,
     raw_table::{Cell, RawTable},
   },
@@ -367,6 +368,16 @@ impl Database {
       .copied()
   }
 
+  pub fn module_full_name(&self, mid: NodeId) -> String {
+    let mut names = Vec::new();
+    for ele in self.modules.get(mid).unwrap().ancestors() {
+      names.push(ele.value().name.clone());
+    }
+    names.reverse();
+    names.push(self.modules.get(mid).unwrap().value().name.clone());
+    names.join(&config::PATH_SPLITOR.to_string())
+  }
+
   pub fn load_project(&mut self, root: impl AsRef<Path>) -> Result<()> {
     self.ld_project(root.as_ref(), root.as_ref())
   }
@@ -412,6 +423,12 @@ impl Database {
     }
     Ok(())
   }
+
+  pub fn generate_code(&self, target: impl AsRef<Path>) -> Result<()> {
+    let mut csharp = CSharp::new(self);
+    csharp.generate(target)?;
+    Ok(())
+  }
 }
 
 pub mod error {
@@ -450,6 +467,7 @@ mod test {
 
   const PROJ_PATH: &'static str = "./test/proj/";
   const JSON_OUT: &'static str = "./test/json_output";
+  const CSHARP_OUT: &'static str = "./test/csharp_output";
   #[test]
   fn test_load_project() -> Result<()> {
     let mut db = Database::new();
@@ -462,6 +480,14 @@ mod test {
     let mut db = Database::new();
     db.load_project(PROJ_PATH)?;
     db.generate_data(JSON_OUT)?;
+    Ok(())
+  }
+
+  #[test]
+  fn test_generate_csharp() -> Result<()> {
+    let mut db = Database::new();
+    db.load_project(PROJ_PATH)?;
+    db.generate_code(CSHARP_OUT)?;
     Ok(())
   }
 }
