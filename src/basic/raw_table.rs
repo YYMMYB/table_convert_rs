@@ -99,6 +99,7 @@ pub mod error {
   }
 }
 
+#[cfg(test)]
 mod test {
   use crate::basic::{database::Database, raw_table::RawTable};
   use anyhow::Result;

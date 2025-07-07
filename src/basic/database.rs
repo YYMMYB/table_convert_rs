@@ -1,5 +1,7 @@
 use std::{
-  fs::{DirBuilder, File, ReadDir, create_dir, read_dir, write},
+  backtrace::Backtrace,
+  fs::{DirBuilder, File, ReadDir, create_dir, create_dir_all, read_dir, remove_dir, write},
+  ops::Not,
   path::Path,
   rc::Rc,
 };
@@ -105,10 +107,12 @@ pub struct Data {
 
 impl Data {
   pub fn build_json(&self, database: &Database) -> Result<Value> {
-    self.bd_json(database, self.typ, self.value.root().id())
+    self
+      .bd_json(database, self.typ, self.value.root().id())
+      .and_then(|value| value.ok_or(原始数据值为空(Backtrace::capture()).into()))
   }
 
-  fn bd_json(&self, database: &Database, typ_id: usize, data_id: NodeId) -> Result<Value> {
+  fn bd_json(&self, database: &Database, typ_id: usize, data_id: NodeId) -> Result<Option<Value>> {
     let ty = database.get_type(typ_id).ok_or(类型不存在)?;
     let node = self.value.get(data_id).ok_or(原始数据节点不存在)?;
 
@@ -121,38 +125,56 @@ impl Data {
           .value()
           .try_as_one_ref()
           .ok_or(原始数据节点类型不匹配)?;
-        let v = serde_json::from_str::<Number>(&s)?;
-        if v.is_f64() {
-          return Err(数字类型错误.into());
+        dbg!(&s);
+        if s.trim().is_empty() {
+          None
+        } else {
+          let v = serde_json::from_str::<Number>(&s)?;
+          if v.is_f64() {
+            return Err(数字类型错误.into());
+          }
+          Some(Value::from(v))
         }
-        Value::from(v)
       }
       Type::Float => {
         let s = node
           .value()
           .try_as_one_ref()
           .ok_or(原始数据节点类型不匹配)?;
-        let v = serde_json::from_str::<Number>(&s)?;
-        if !v.is_f64() {
-          return Err(数字类型错误.into());
+        if s.trim().is_empty() {
+          None
+        } else {
+          let v = serde_json::from_str::<Number>(&s)?;
+          if !v.is_f64() {
+            return Err(数字类型错误.into());
+          }
+          Some(Value::from(v))
         }
-        Value::from(v)
       }
       Type::String => {
         let s = node
           .value()
           .try_as_one_ref()
           .ok_or(原始数据节点类型不匹配)?;
-        let v = &***s;
-        Value::from(v)
+        dbg!(&s);
+        if s.trim().is_empty() {
+          None
+        } else {
+          let v = serde_json::from_str::<String>(&s).unwrap_or(s.as_ref().to_string());
+          Some(Value::from(v))
+        }
       }
       Type::Bool => {
         let s = node
           .value()
           .try_as_one_ref()
           .ok_or(原始数据节点类型不匹配)?;
-        let v = serde_json::from_str::<bool>(&s)?;
-        Value::from(v)
+        if s.trim().is_empty() {
+          None
+        } else {
+          let v = serde_json::from_str::<bool>(&s)?;
+          Some(Value::from(v))
+        }
       }
       Type::List(tid) => {
         if !node.value().is_many() {
@@ -161,9 +183,11 @@ impl Data {
         let mut v = Vec::new();
         for ch in node.children() {
           let item = self.bd_json(database, *tid, ch.id())?;
-          v.push(item);
+          if let Some(item) = item {
+            v.push(item);
+          }
         }
-        Value::from(v)
+        Some(Value::from(v))
       }
       Type::Dict(key_tid, value_tid) => {
         if !node.value().is_many() {
@@ -178,11 +202,16 @@ impl Data {
             return Err(原始数据节点类型不匹配.into());
           }
           let key = self.bd_json(database, *key_tid, key_id)?;
-          let value = self.bd_json(database, *value_tid, value_id)?;
-          let key_str = serde_json::to_string(&key)?;
-          v.insert(key_str, value);
+          dbg!(&key);
+          if let Some(key) = key {
+            let value = self
+              .bd_json(database, *value_tid, value_id)?
+              .ok_or(原始数据值为空(Backtrace::capture()))?;
+            let key_str = serde_json::to_string(&key)?;
+            v.insert(key_str, value);
+          }
         }
-        Value::from(v)
+        Some(Value::from(v))
       }
       Type::Struct { full_name, fields } => {
         let fields_data = node
@@ -193,12 +222,23 @@ impl Data {
           return Err(原始数据节点类型不匹配.into());
         }
         let mut v = Map::new();
+        let mut exist_none = false;
         for (field_name, f_tid) in fields.iter() {
           let f_id = fields_data.get(field_name).ok_or(原始数据节点类型不匹配)?;
           let field = self.bd_json(database, *f_tid, *f_id)?;
-          v.insert(field_name.as_ref().clone(), field);
+          dbg!((&field_name, &field));
+          if let Some(field) = field {
+            v.insert(field_name.as_ref().clone(), field);
+          } else {
+            exist_none = true;
+            break;
+          }
         }
-        Value::from(v)
+        if exist_none {
+          None
+        } else {
+          Some(Value::from(v))
+        }
       }
     };
     Ok(value)
@@ -328,26 +368,28 @@ impl Database {
   }
 
   pub fn load_project(&mut self, root: impl AsRef<Path>) -> Result<()> {
-    self.ld_project(&root, &root)
+    self.ld_project(root.as_ref(), root.as_ref())
   }
 
   fn ld_project(&mut self, root: impl AsRef<Path>, path: impl AsRef<Path>) -> Result<()> {
     for entry in read_dir(path.as_ref())? {
       let entry = entry?;
       if entry.path().is_file() {
-        let mut raw_table = RawTable::from_csv(
-          entry.path(),
-          &config::os_path_to_path(&root, entry.path()).ok_or(文件路径错误)?,
-        )?;
+        let full_name = config::os_path_to_path(root.as_ref(), entry.path()).ok_or(文件路径错误)?;
+        dbg!(&full_name);
+        let mut raw_table = RawTable::from_csv(entry.path(), &full_name)?;
         raw_table.build(self)?;
-      }else{
-        self.ld_project(&root, entry.path())?
+      } else {
+        self.ld_project(root.as_ref(), entry.path())?
       }
     }
     Ok(())
   }
 
   pub fn generate_data(&self, target: impl AsRef<Path>) -> Result<()> {
+    if !target.as_ref().exists() {
+      create_dir(target.as_ref())?;
+    }
     self.gen_data(target, self.modules.root().id())
   }
 
@@ -358,10 +400,14 @@ impl Database {
         let data = self.get_data(did).ok_or(数据不存在)?;
         let json = data.build_json(self)?;
         let json_str = serde_json::to_string(&json)?;
-        write(path.with_extension("json"), json_str)?;
+        let json_path = path.with_extension("json");
+        dbg!(&json_path);
+        write(json_path, json_str)?;
       } else {
-        create_dir(&path)?;
-        self.gen_data(&path, ch.id())?;
+        if !path.exists() {
+          create_dir(path.clone())?;
+        }
+        self.gen_data(path.clone(), ch.id())?;
       }
     }
     Ok(())
@@ -369,6 +415,8 @@ impl Database {
 }
 
 pub mod error {
+  use std::backtrace::{self, Backtrace};
+
   use thiserror::Error;
 
   #[derive(Debug, Error)]
@@ -389,5 +437,31 @@ pub mod error {
     数据不存在,
     #[error("文件路径错误")]
     文件路径错误,
+    #[error("原始数据值为空")]
+    原始数据值为空(Backtrace),
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::basic::database::Database;
+  use anyhow::Result;
+  use std::path::Path;
+
+  const PROJ_PATH: &'static str = "./test/proj/";
+  const JSON_OUT: &'static str = "./test/json_output";
+  #[test]
+  fn test_load_project() -> Result<()> {
+    let mut db = Database::new();
+    db.load_project(PROJ_PATH)?;
+    dbg!(&db);
+    Ok(())
+  }
+  #[test]
+  fn test_generate_json() -> Result<()> {
+    let mut db = Database::new();
+    db.load_project(PROJ_PATH)?;
+    db.generate_data(JSON_OUT)?;
+    Ok(())
   }
 }

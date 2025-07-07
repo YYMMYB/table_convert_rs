@@ -75,6 +75,25 @@ pub fn os_path_to_path(
   os_path: impl AsRef<Path>,
 ) -> Option<String> {
   Some(path_rel_to_global(
-    &os_path.as_ref().strip_prefix(root_os_path).ok()?.to_str()?,
+    &os_path
+      .as_ref()
+      .strip_prefix(root_os_path)
+      .ok()?
+      .with_extension("")
+      .to_str()?
+      .replace(['/', '\\'], "."),
   ))
+}
+
+#[cfg(test)]
+mod test {
+  use crate::basic::config::os_path_to_path;
+
+  #[test]
+  fn test_os_path_to_path() {
+    let name = os_path_to_path("D:\\a\\b\\c", "D:\\a\\b\\c\\d\\e.csv");
+    assert_eq!(name, Some(".d.e".to_string()));
+    let name = os_path_to_path("D:\\a\\b\\c", "D:\\a\\b\\c\\d\\e");
+    assert_eq!(name, Some(".d.e".to_string()));
+  }
 }

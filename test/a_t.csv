@@ -3,7 +3,7 @@ id,i,1,2,3
 name,s,a,a,a
 age,i,20,21,22
 偏向,f,0.5,0.5,0.5
-男女,b,TRUE,FALSE,TRUE
+男女,b,true,false,true
 技能,l<i>,1001, ,1201
 ,,1002,,
 ,,1003,,

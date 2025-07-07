@@ -8,8 +8,11 @@ fn main() {
     .init();
 
   info!("aaaaa");
-  
+
   let path = Path::new("D:\\a\\b\\c");
   let rel = path.strip_prefix("D:/a").unwrap();
-  println!("{}", rel.to_str().unwrap())
+  println!("{}", rel.to_str().unwrap());
+
+  fn p(path: impl AsRef<Path>) {}
+  p("./test/");
 }

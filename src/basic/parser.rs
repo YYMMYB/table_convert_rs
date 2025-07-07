@@ -82,10 +82,12 @@ impl Parser {
           .unwrap()
           .get(field)
         {
-          data_tree
-            .get_mut(*id)
-            .ok_or(error::Error::Map存储了无效子节点)?
-            .append(RawData::One(cell.clone()));
+          if !cell.is_empty() {
+            data_tree
+              .get_mut(*id)
+              .ok_or(error::Error::Map存储了无效子节点)?
+              .append(RawData::One(cell.clone()));
+          }
         } else {
           let typ = database
             .get_type(self.columns[col].typ)
@@ -96,7 +98,9 @@ impl Parser {
             let mut item = data_tree.get_mut(item_id).unwrap();
             let mut arr = item.append(RawData::Many);
             id = arr.id();
-            arr.append(RawData::One(cell.clone())).id();
+            if !cell.is_empty() {
+              arr.append(RawData::One(cell.clone())).id();
+            }
           } else {
             id = data_tree
               .get_mut(item_id)
