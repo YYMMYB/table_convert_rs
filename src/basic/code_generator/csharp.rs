@@ -27,8 +27,11 @@ impl<'a> CSharp<'a> {
     reg.register_escape_fn(no_escape);
     reg.register_template_file("mod", "./templates/csharp/mod.hbs")?;
     reg.register_template_file("class", "./templates/csharp/class.hbs")?;
+    reg.register_template_file("util", "./templates/csharp/util.hbs")?;
+    reg.register_template_file("access", "./templates/csharp/access.hbs")?;
 
     let project_namespace = Some("Cfg");
+    let common_namespace_name = "Common";
     let mut res = CSharp {
       reg,
       database,
@@ -39,24 +42,40 @@ impl<'a> CSharp<'a> {
         mod_usings: vec![
           "System".to_string(),
           "System.Collections.Generic".to_string(),
+          "System.Text.Json.Serialization".to_string(),
         ],
-        common_namespace: [project_namespace, Some("Common")].option_join(NAMESPACE_SEPARATOR),
+        class_usings: vec![
+          "System".to_string(),
+          "System.Collections.Generic".to_string(),
+          "System.Text.Json.Serialization".to_string(),
+        ],
+        common_namespace_name: common_namespace_name.to_string(),
+        common_namespace: [project_namespace, Some(common_namespace_name)].option_join(NAMESPACE_SEPARATOR),
       },
     };
 
     Ok(res)
   }
   pub fn generate(&self, target: impl AsRef<Path>) -> Result<()> {
+    let common = target.as_ref().join(self.common_env.common_namespace_name.as_str());
+    if !common.exists() {
+      create_dir_all(common.clone())?;
+    }
+    let content = self.reg.render("util", &self.common_env, )?;
+    write(common.join("Util.cs"), content)?;
+    let content = self.reg.render("access",&self.common_env)?;
+    write(common.join("IDataAccess.cs"), content)?;
     let root = target
       .as_ref()
       .join(self.common_env.root_namespace.as_str());
     if !root.exists() {
       create_dir_all(root.clone())?;
     }
-    self.gene(self.database.modules.root().id(), root)
+    self.gen_mods(self.database.modules.root().id(), root);
+    Ok(())
   }
 
-  fn gene(&self, mid: NodeId, target: impl AsRef<Path>) -> Result<()> {
+  fn gen_mods(&self, mid: NodeId, target: impl AsRef<Path>) -> Result<()> {
     if target.as_ref().exists().not() {
       create_dir(target.as_ref())?;
     }
@@ -105,7 +124,7 @@ impl<'a> CSharp<'a> {
       )?;
 
       for ch in self.database.modules.get(mid).unwrap().children() {
-        self.gene(ch.id(), target.as_ref().join(&ch.value().name))?;
+        self.gen_mods(ch.id(), target.as_ref().join(&ch.value().name))?;
       }
     }
 
@@ -202,6 +221,8 @@ pub struct CommonEnv {
   pub root_namespace: String,
   pub mod_class_name: String,
   pub mod_usings: Vec<String>,
+  pub class_usings: Vec<String>,
+  pub common_namespace_name: String,
   pub common_namespace: String,
 }
 #[derive(Debug, Serialize)]

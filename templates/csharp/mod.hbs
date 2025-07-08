@@ -1,6 +1,7 @@
 {{#each mod_usings}}
 using {{this}};
 {{/each}}
+using {{common_namespace}};
 
 namespace {{mod_namespace}};
 public class {{mod_class_name}} {
@@ -12,20 +13,20 @@ public class {{mod_class_name}} {
     public {{namespace}}.{{../mod_class_name}} {{name}};
     {{/each}}
 
-    public static {{mod_namespace}}.{{mod_class_name}} Load(IDataAccess access, string folder) {
+    public static {{mod_namespace}}.{{mod_class_name}} Load(IDataAccess access, IDataPath folder) {
         var tables = new {{mod_namespace}}.{{mod_class_name}}();
 
         // 数据表
         {{#each data_fields}}
         {
         var s = access.GetString(access.JoinPath(folder, "{{data_file_name}}"));
-        tables.{{name}} = JsonSerializer.Deserialize<{{type_full_name}}>(s, {{../common_namespace}}.Options);
+        tables.{{name}} = JsonSerializer.Deserialize<{{type_full_name}}>(s, {{../common_namespace}}.Utils.Options);
         }
         {{/each}}
 
         // 子模块
         {{#each submodule_fields}}
-        tables.{{name}} = {{namespace}}.{{../mod_class_name}}.Load(access,access.JoinPath(folder, "{{data_folder_name}}"));
+        tables.{{name}} = {{namespace}}.{{../mod_class_name}}.Load(access, access.JoinPath(folder, "{{data_folder_name}}"));
         {{/each}}
         return tables;
     }
