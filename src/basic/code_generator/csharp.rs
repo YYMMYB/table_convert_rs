@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::basic::{
-  config::OptionJoin,
+  config::{self, OptionJoin},
   database::{Database, Type},
 };
 
@@ -22,12 +22,11 @@ pub struct CSharp<'a> {
 }
 
 impl<'a> CSharp<'a> {
-  pub fn new(database: &'a Database) -> Self {
+  pub fn try_new(database: &'a Database) -> Result<Self> {
     let mut reg = Handlebars::new();
     reg.register_escape_fn(no_escape);
-    reg
-      .register_template_file("mod", "./templates/csharp/mod.hbs")
-      .unwrap();
+    reg.register_template_file("mod", "./templates/csharp/mod.hbs")?;
+    reg.register_template_file("class", "./templates/csharp/class.hbs")?;
 
     let project_namespace = Some("Cfg");
     let mut res = CSharp {
@@ -45,7 +44,7 @@ impl<'a> CSharp<'a> {
       },
     };
 
-    res
+    Ok(res)
   }
   pub fn generate(&self, target: impl AsRef<Path>) -> Result<()> {
     let root = target
@@ -61,6 +60,7 @@ impl<'a> CSharp<'a> {
     if target.as_ref().exists().not() {
       create_dir(target.as_ref())?;
     }
+    let mod_namespace = self.mod_namespace(mid);
 
     // 子模块
     let mut has_chlid = false;
@@ -72,10 +72,10 @@ impl<'a> CSharp<'a> {
       dbg!(&name);
       if let Some(did) = ch.value().data {
         let tid = self.database.get_data(did).unwrap().typ;
-        let type_name = self.type_name(tid);
+        let type_full_name = self.type_full_name(tid);
         let fenv = DataFieldEnv {
           name: name.clone(),
-          type_name: type_name,
+          type_full_name,
           data_file_name: name.clone() + ".json",
         };
         data.push(fenv);
@@ -91,7 +91,7 @@ impl<'a> CSharp<'a> {
     if has_chlid {
       let mut env = ModuleFileEnv {
         common_env: &self.common_env,
-        mod_namespace: self.mod_namespace(mid),
+        mod_namespace: mod_namespace.clone(),
         data_fields: data,
         submodule_fields: mods,
       };
@@ -109,12 +109,50 @@ impl<'a> CSharp<'a> {
       }
     }
 
-    // 包含类型
-    
+    // 包含的类型
+    for (name, &id) in self
+      .database
+      .modules
+      .get(mid)
+      .unwrap()
+      .value()
+      .type_name_to_id
+      .iter()
+    {
+      let ty = self.database.get_type(id).unwrap();
+      match ty {
+        Type::Struct { full_name, fields } => {
+          let name = self.named_type_name(&full_name);
+
+          let mut field_envs = Vec::new();
+          for (fname, ftid) in fields.iter() {
+            let ftyname = self.type_full_name(*ftid);
+            let fenv = ClassFieldEnv {
+              name: fname.as_ref().clone(),
+              type_full_name: ftyname,
+            };
+            field_envs.push(fenv);
+          }
+          let env = ClassFileEnv {
+            common_env: &self.common_env,
+            namespace: mod_namespace.clone(),
+            name: name.clone(),
+            fields: field_envs,
+          };
+
+          let content = self.reg.render("class", &env)?;
+          write(
+            target.as_ref().join(name).with_added_extension("cs"),
+            content,
+          )?;
+        }
+        _ => {}
+      }
+    }
     Ok(())
   }
 
-  fn type_name(&self, tid: usize) -> String {
+  fn type_full_name(&self, tid: usize) -> String {
     match self.database.get_type(tid).unwrap() {
       Type::Unknown => todo!(),
       Type::Placeholder(_) => todo!(),
@@ -123,12 +161,12 @@ impl<'a> CSharp<'a> {
       Type::Float => "float".to_string(),
       Type::String => "string".to_string(),
       Type::Bool => "bool".to_string(),
-      Type::List(pid) => self.type_name(*pid) + "[]",
+      Type::List(pid) => self.type_full_name(*pid) + "[]",
       Type::Dict(pid1, pid2) => {
         format!(
           "Dictionary<{}, {}>",
-          self.type_name(*pid1),
-          self.type_name(*pid2)
+          self.type_full_name(*pid1),
+          self.type_full_name(*pid2)
         )
       }
       Type::Struct { full_name, fields } => self.named_type_full_name(&full_name),
@@ -152,6 +190,10 @@ impl<'a> CSharp<'a> {
       return rel_proj_name.to_string();
     }
   }
+
+  fn named_type_name(&self, engine_full_name: &str) -> String {
+    config::path_name(engine_full_name).to_string()
+  }
 }
 
 #[derive(Debug, Serialize)]
@@ -174,7 +216,7 @@ pub struct ModuleFileEnv<'a> {
 #[derive(Debug, Serialize)]
 pub struct DataFieldEnv {
   pub name: String,
-  pub type_name: String,
+  pub type_full_name: String,
   pub data_file_name: String,
 }
 
@@ -183,6 +225,21 @@ pub struct SubmoduleFieldEnv {
   pub name: String,
   pub namespace: String,
   pub data_folder_name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClassFileEnv<'a> {
+  #[serde(flatten)]
+  pub common_env: &'a CommonEnv,
+  pub namespace: String,
+  pub name: String,
+  pub fields: Vec<ClassFieldEnv>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClassFieldEnv {
+  pub name: String,
+  pub type_full_name: String,
 }
 
 const NAMESPACE_SEPARATOR: &'static str = ".";

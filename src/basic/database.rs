@@ -425,7 +425,7 @@ impl Database {
   }
 
   pub fn generate_code(&self, target: impl AsRef<Path>) -> Result<()> {
-    let mut csharp = CSharp::new(self);
+    let mut csharp = CSharp::try_new(self)?;
     csharp.generate(target)?;
     Ok(())
   }

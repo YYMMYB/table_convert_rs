@@ -1,0 +1,11 @@
+{{#each class_usings}}
+using {{this}};
+{{/each}}
+
+namespace {{namespace}};
+
+public partial class {{name}} {
+    {{#each fields}}
+    public {{type_full_name}} {{name}};
+    {{/each}}
+}

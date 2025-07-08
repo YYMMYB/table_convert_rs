@@ -5,7 +5,7 @@ using {{this}};
 namespace {{mod_namespace}};
 public class {{mod_class_name}} {
     {{#each data_fields}}
-    public {{type_name}} {{name}};
+    public {{type_full_name}} {{name}};
     {{/each}}
 
     {{#each submodule_fields}}
@@ -19,7 +19,7 @@ public class {{mod_class_name}} {
         {{#each data_fields}}
         {
         var s = access.GetString(access.JoinPath(folder, "{{data_file_name}}"));
-        tables.{{name}} = JsonSerializer.Deserialize<{{type_name}}>(s, {{../common_namespace}}.Options);
+        tables.{{name}} = JsonSerializer.Deserialize<{{type_full_name}}>(s, {{../common_namespace}}.Options);
         }
         {{/each}}
 
