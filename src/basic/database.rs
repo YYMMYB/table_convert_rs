@@ -384,8 +384,18 @@ impl Database {
   }
 
   fn ld_project(&mut self, root: impl AsRef<Path>, path: impl AsRef<Path>) -> Result<()> {
-    for entry in read_dir(path.as_ref())? {
-      let ch_path = entry?.path();
+    let ch_paths = read_dir(path.as_ref())?
+      .map(|e| Ok::<_, anyhow::Error>(e?.path()))
+      .try_collect::<Vec<_>>()?;
+    // 文件夹内有 .teignore 文件, 则忽略本文件夹
+    if ch_paths
+      .iter()
+      .any(|p| p.is_file() && p.file_name().is_some_and(|f| f == ".teignore"))
+    {
+      return Ok(());
+    }
+
+    for ch_path in ch_paths.iter() {
       if ch_path.is_file() && ch_path.extension().is_some() && ch_path.extension().unwrap() == "csv"
       {
         let full_name =

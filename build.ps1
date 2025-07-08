@@ -9,3 +9,4 @@ if(!(Test-Path -Path $TARGETDIR)) {
 Copy-Item -Path "target/release/rust_table_export_simple.exe" -Destination "$TARGETDIR/export_table.exe"
 Copy-Item -Recurse -Path "templates" -Destination $TARGETDIR
 Copy-Item -Recurse -Path "access_example" -Destination $TARGETDIR
+New-Item -ItemType File -Path "$TARGETDIR/.teignore"

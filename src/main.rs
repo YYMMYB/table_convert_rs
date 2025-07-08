@@ -22,7 +22,7 @@ fn main() -> Result<()>{
 
 #[derive(Debug, Parser)]
 struct Args {
-  #[arg(long, default_value = ".")]
+  #[arg(long, default_value = "..")]
   proj: PathBuf,
   data: PathBuf,
   code: PathBuf,
