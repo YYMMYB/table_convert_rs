@@ -1,11 +1,25 @@
 use crate::HashMap;
 use anyhow::Result;
 use std::{
+  borrow::Borrow,
   cell::{LazyCell, OnceCell},
   hash::Hash,
   path::Path,
   sync::LazyLock,
 };
+
+pub trait OptionJoin {
+  fn option_join(&self, sep: &str) -> String;
+}
+impl<T: Borrow<str>> OptionJoin for [Option<T>] {
+  fn option_join(&self, sep: &str) -> String {
+    self
+      .iter()
+      .filter_map(|i| i.as_ref().map(|s| s.borrow()))
+      .collect::<Vec<&str>>()
+      .join(sep)
+  }
+}
 
 pub const PATH_SPLITOR: char = '.';
 

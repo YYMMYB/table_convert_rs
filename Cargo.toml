@@ -13,11 +13,11 @@ csv = "*"
 anyhow = "*"
 thiserror = "*"
 
-serde = "*"
+serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 handlebars = "*"
 
 ego-tree = "*"
 
 
-strum = {version = "*", features = ["derive"]}
+strum = { version = "*", features = ["derive"] }

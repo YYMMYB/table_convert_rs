@@ -2,13 +2,31 @@
 using {{this}};
 {{/each}}
 
-namespace {{#if project_namespace}}{{project_namespace}}.{{/if}}{{mod_namespace}};
-public class {{mod_name}} {
-    {{#each data}}
-    public {{type}} {{name}};
+namespace {{mod_namespace}};
+public class {{mod_class_name}} {
+    {{#each data_fields}}
+    public {{type_name}} {{name}};
     {{/each}}
 
-    {{#each mods}}
-    public {{name}}.{{../mod_name}} {{name}};
+    {{#each submodule_fields}}
+    public {{namespace}}.{{../mod_class_name}} {{name}};
     {{/each}}
+
+    public static {{mod_namespace}}.{{mod_class_name}} Load(IDataAccess access, string folder) {
+        var tables = new {{mod_namespace}}.{{mod_class_name}}();
+
+        // 数据表
+        {{#each data_fields}}
+        {
+        var s = access.GetString(access.JoinPath(folder, "{{data_file_name}}"));
+        tables.{{name}} = JsonSerializer.Deserialize<{{type_name}}>(s, {{../common_namespace}}.Options);
+        }
+        {{/each}}
+
+        // 子模块
+        {{#each submodule_fields}}
+        tables.{{name}} = {{namespace}}.{{../mod_class_name}}.Load(access,access.JoinPath(folder, "{{data_folder_name}}"));
+        {{/each}}
+        return tables;
+    }
 }
