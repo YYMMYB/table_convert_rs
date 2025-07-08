@@ -466,8 +466,8 @@ mod test {
   use std::path::Path;
 
   const PROJ_PATH: &'static str = "./test/proj/";
-  const JSON_OUT: &'static str = r"D:\Project\cs_test\cs_test\Gen\json\";
-  const CSHARP_OUT: &'static str = r"D:\Project\cs_test\cs_test\Gen\Cfg\";
+  const JSON_OUT: &'static str = r"D:\Project\gd_读表测试\Gen\Data";
+  const CSHARP_OUT: &'static str = r"D:\Project\gd_读表测试\Gen\Code";
   #[test]
   fn test_load_project() -> Result<()> {
     let mut db = Database::new();
