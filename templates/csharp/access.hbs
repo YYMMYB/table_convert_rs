@@ -3,8 +3,9 @@ using System.IO;
 namespace {{common_namespace}};
 
 public interface IDataAccess {
-    string GetString(IDataPath path);
+    IDataPath RootPath();
     IDataPath JoinPath(IDataPath path, string item);
+    string GetData(IDataPath path);
 }
 
 public interface IDataPath {

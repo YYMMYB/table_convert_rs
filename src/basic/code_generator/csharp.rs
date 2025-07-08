@@ -25,24 +25,33 @@ impl<'a> CSharp<'a> {
   pub fn try_new(database: &'a Database) -> Result<Self> {
     let mut reg = Handlebars::new();
     reg.register_escape_fn(no_escape);
-    reg.register_template_file("mod", "./templates/csharp/mod.hbs")?;
-    reg.register_template_file("class", "./templates/csharp/class.hbs")?;
-    reg.register_template_file("util", "./templates/csharp/util.hbs")?;
-    reg.register_template_file("access", "./templates/csharp/access.hbs")?;
 
-    let project_namespace = Some("Cfg");
+    let template_folder = Path::new("./templates/csharp/");
+    for entry in template_folder.read_dir()? {
+      let tpath = entry?.path();
+      if tpath.is_file() {
+        let name = tpath.file_name().unwrap().to_str().unwrap();
+        let stem = tpath.file_stem().unwrap().to_str().unwrap();
+        reg.register_template_file(stem, template_folder.join(name))?;
+      }
+    }
+
+    let project_namespace = Some("__Gen.Cfg");
     let common_namespace_name = "Common";
+    let data_type_namespace_name = "Types";
     let mut res = CSharp {
       reg,
       database,
       common_env: CommonEnv {
         project_namespace: project_namespace.map(|s| s.to_string()),
-        root_namespace: "Types".to_string(),
+        cfg_class_name: "Cfg".to_string(),
         mod_class_name: "Mod".to_string(),
+
         mod_usings: vec![
           "System".to_string(),
           "System.Collections.Generic".to_string(),
           "System.Text.Json.Serialization".to_string(),
+          "System.Text.Json".to_string(),
         ],
         class_usings: vec![
           "System".to_string(),
@@ -50,26 +59,46 @@ impl<'a> CSharp<'a> {
           "System.Text.Json.Serialization".to_string(),
         ],
         common_namespace_name: common_namespace_name.to_string(),
-        common_namespace: [project_namespace, Some(common_namespace_name)].option_join(NAMESPACE_SEPARATOR),
+        common_namespace: [project_namespace, Some(common_namespace_name)]
+          .option_join(NAMESPACE_SEPARATOR),
+        data_type_namespace_name: data_type_namespace_name.to_string(),
+        data_type_namespace: [project_namespace, Some(data_type_namespace_name)]
+          .option_join(NAMESPACE_SEPARATOR),
       },
     };
 
     Ok(res)
   }
   pub fn generate(&self, target: impl AsRef<Path>) -> Result<()> {
-    let common = target.as_ref().join(self.common_env.common_namespace_name.as_str());
-    if !common.exists() {
-      create_dir_all(common.clone())?;
+    if !target.as_ref().exists() {
+      create_dir_all(target.as_ref())?;
     }
-    let content = self.reg.render("util", &self.common_env, )?;
+    let root_mod_env = self.mod_env(self.database.modules.root().id());
+    let content = self.reg.render("cfg", &root_mod_env)?;
+    write(
+      target
+        .as_ref()
+        .join(&self.common_env.cfg_class_name)
+        .with_added_extension("cs"),
+      content,
+    )?;
+
+    let common = target
+      .as_ref()
+      .join(self.common_env.common_namespace_name.as_str());
+    if !common.exists() {
+      create_dir(common.clone())?;
+    }
+    let content = self.reg.render("util", &self.common_env)?;
     write(common.join("Util.cs"), content)?;
-    let content = self.reg.render("access",&self.common_env)?;
+    let content = self.reg.render("access", &self.common_env)?;
     write(common.join("IDataAccess.cs"), content)?;
+
     let root = target
       .as_ref()
-      .join(self.common_env.root_namespace.as_str());
+      .join(self.common_env.data_type_namespace_name.as_str());
     if !root.exists() {
-      create_dir_all(root.clone())?;
+      create_dir(root.clone())?;
     }
     self.gen_mods(self.database.modules.root().id(), root);
     Ok(())
@@ -82,38 +111,7 @@ impl<'a> CSharp<'a> {
     let mod_namespace = self.mod_namespace(mid);
 
     // 子模块
-    let mut has_chlid = false;
-    let mut data = Vec::new();
-    let mut mods = Vec::new();
-    for ch in self.database.modules.get(mid).unwrap().children() {
-      has_chlid = true;
-      let name = ch.value().name.clone();
-      dbg!(&name);
-      if let Some(did) = ch.value().data {
-        let tid = self.database.get_data(did).unwrap().typ;
-        let type_full_name = self.type_full_name(tid);
-        let fenv = DataFieldEnv {
-          name: name.clone(),
-          type_full_name,
-          data_file_name: name.clone() + ".json",
-        };
-        data.push(fenv);
-      } else {
-        let fenv = SubmoduleFieldEnv {
-          name: name.clone(),
-          namespace: self.mod_namespace(ch.id()),
-          data_folder_name: name.clone(),
-        };
-        mods.push(fenv);
-      }
-    }
-    if has_chlid {
-      let mut env = ModuleFileEnv {
-        common_env: &self.common_env,
-        mod_namespace: mod_namespace.clone(),
-        data_fields: data,
-        submodule_fields: mods,
-      };
+    if let Some(env) = self.mod_env(mid) {
       let mod_content = self.reg.render("mod", &env)?;
       write(
         target
@@ -171,6 +169,46 @@ impl<'a> CSharp<'a> {
     Ok(())
   }
 
+  fn mod_env(&self, mid: NodeId) -> Option<ModuleFileEnv> {
+    let mut has_chlid = false;
+    let mut data = Vec::new();
+    let mut mods = Vec::new();
+    for ch in self.database.modules.get(mid).unwrap().children() {
+      has_chlid = true;
+      let name = ch.value().name.clone();
+      dbg!(&name);
+      if let Some(did) = ch.value().data {
+        let tid = self.database.get_data(did).unwrap().typ;
+        let type_full_name = self.type_full_name(tid);
+        let fenv = DataFieldEnv {
+          name: name.clone(),
+          type_full_name,
+          data_file_name: name.clone() + ".json",
+        };
+        data.push(fenv);
+      } else {
+        let fenv = SubmoduleFieldEnv {
+          name: name.clone(),
+          namespace: self.mod_namespace(ch.id()),
+          data_folder_name: name.clone(),
+        };
+        mods.push(fenv);
+      }
+    }
+    if has_chlid {
+      let mod_namespace = self.mod_namespace(mid);
+      let mut env = ModuleFileEnv {
+        common_env: &self.common_env,
+        mod_namespace: mod_namespace.clone(),
+        data_fields: data,
+        submodule_fields: mods,
+      };
+      Some(env)
+    } else {
+      None
+    }
+  }
+
   fn type_full_name(&self, tid: usize) -> String {
     match self.database.get_type(tid).unwrap() {
       Type::Unknown => todo!(),
@@ -193,12 +231,13 @@ impl<'a> CSharp<'a> {
   }
 
   fn mod_namespace(&self, mid: NodeId) -> String {
-    let nm = self.common_env.root_namespace.clone() + &self.database.module_full_name(mid);
+    let nm =
+      self.common_env.data_type_namespace_name.clone() + &self.database.module_full_name(mid);
     self.full_name(&nm)
   }
 
   fn named_type_full_name(&self, engine_full_name: &str) -> String {
-    let nm = self.common_env.root_namespace.clone() + engine_full_name;
+    let nm = self.common_env.data_type_namespace_name.clone() + engine_full_name;
     self.full_name(&nm)
   }
 
@@ -218,12 +257,14 @@ impl<'a> CSharp<'a> {
 #[derive(Debug, Serialize)]
 pub struct CommonEnv {
   pub project_namespace: Option<String>,
-  pub root_namespace: String,
+  pub data_type_namespace_name: String,
   pub mod_class_name: String,
   pub mod_usings: Vec<String>,
   pub class_usings: Vec<String>,
   pub common_namespace_name: String,
   pub common_namespace: String,
+  data_type_namespace: String,
+  cfg_class_name: String,
 }
 #[derive(Debug, Serialize)]
 pub struct ModuleFileEnv<'a> {

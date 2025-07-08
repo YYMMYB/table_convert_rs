@@ -19,8 +19,8 @@ public class {{mod_class_name}} {
         // 数据表
         {{#each data_fields}}
         {
-        var s = access.GetString(access.JoinPath(folder, "{{data_file_name}}"));
-        tables.{{name}} = JsonSerializer.Deserialize<{{type_full_name}}>(s, {{../common_namespace}}.Utils.Options);
+        var s = access.GetData(access.JoinPath(folder, "{{data_file_name}}"));
+        tables.{{name}} = JsonSerializer.Deserialize<{{type_full_name}}>(s, {{../common_namespace}}.Util.Options);
         }
         {{/each}}
 

@@ -1,0 +1,19 @@
+using {{common_namespace}};
+
+namespace {{project_namespace}};
+
+public class {{cfg_class_name}} {
+    public static {{data_type_namespace}}.Mod rootMod;
+
+    {{#each data_fields}}
+    public static {{type_full_name}} {{name}} => rootMod.{{name}};
+    {{/each}}
+
+    {{#each submodule_fields}}
+    public static {{namespace}}.{{../mod_class_name}} {{name}} => rootMod.{{name}};
+    {{/each}}
+
+    public static void Load(IDataAccess access) {
+        rootMod = {{data_type_namespace}}.Mod.Load(access, access.RootPath());
+    }
+}
