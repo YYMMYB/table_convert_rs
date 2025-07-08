@@ -7,7 +7,7 @@ description = "不支持嵌套. 嵌套太复杂, 先写这个先用着吧"
 [dependencies]
 log = "*"
 env_logger = "*"
-clap = "*"
+clap = { version = "*", features = ["derive"] }
 ndarray = "*"
 csv = "*"
 anyhow = "*"

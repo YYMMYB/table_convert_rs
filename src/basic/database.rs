@@ -1,5 +1,6 @@
 use std::{
   backtrace::Backtrace,
+  ffi::OsStr,
   fs::{DirBuilder, File, ReadDir, create_dir, create_dir_all, read_dir, remove_dir, write},
   ops::Not,
   path::Path,
@@ -384,14 +385,16 @@ impl Database {
 
   fn ld_project(&mut self, root: impl AsRef<Path>, path: impl AsRef<Path>) -> Result<()> {
     for entry in read_dir(path.as_ref())? {
-      let entry = entry?;
-      if entry.path().is_file() {
-        let full_name = config::os_path_to_path(root.as_ref(), entry.path()).ok_or(文件路径错误)?;
+      let ch_path = entry?.path();
+      if ch_path.is_file() && ch_path.extension().is_some() && ch_path.extension().unwrap() == "csv"
+      {
+        let full_name =
+          config::os_path_to_path(root.as_ref(), ch_path.clone()).ok_or(文件路径错误)?;
         dbg!(&full_name);
-        let mut raw_table = RawTable::from_csv(entry.path(), &full_name)?;
+        let mut raw_table = RawTable::from_csv(ch_path.clone(), &full_name)?;
         raw_table.build(self)?;
       } else {
-        self.ld_project(root.as_ref(), entry.path())?
+        self.ld_project(root.as_ref(), ch_path.clone())?
       }
     }
     Ok(())
@@ -399,7 +402,7 @@ impl Database {
 
   pub fn generate_data(&self, target: impl AsRef<Path>) -> Result<()> {
     if !target.as_ref().exists() {
-      create_dir(target.as_ref())?;
+      create_dir_all(target.as_ref())?;
     }
     self.gen_data(target, self.modules.root().id())
   }

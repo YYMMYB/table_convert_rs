@@ -1,36 +1,29 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, env, path::{self, Path, PathBuf}};
 
+use clap::Parser;
 use log::*;
+use rust_table_export_simple::basic::database::Database;
+use anyhow::Result;
 
-fn main() {
+fn main() -> Result<()>{
   env_logger::Builder::from_default_env()
     .filter_level(LevelFilter::Info)
     .init();
+  let args = Args::parse();
+  dbg!(&args);
+  dbg!(path::absolute(&args.proj));
 
-  info!("aaaaa");
-
-  let d = Dt {
-    a: Some("aaaaa".to_string()),
-    b: None,
-    e: Some(E::Y {
-      y: "y".to_string(),
-      yy: 3.14,
-    }),
-  };
-  let j = serde_json::to_string(&d).unwrap();
-  dbg!(&j);
-}
-use serde::*;
-#[derive(Debug, Serialize)]
-pub struct Dt {
-  pub a: Option<String>,
-  pub b: Option<String>,
-  pub e: Option<E>,
+  let mut db = Database::new();
+  db.load_project(args.proj)?;
+  db.generate_data(args.data)?;
+  db.generate_code(args.code)?;
+  Ok(())
 }
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type")]
-pub enum E {
-  X(i32),
-  Y { y: String, yy: f32 },
+#[derive(Debug, Parser)]
+struct Args {
+  #[arg(long, default_value = ".")]
+  proj: PathBuf,
+  data: PathBuf,
+  code: PathBuf,
 }
